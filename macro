@@ -1,0 +1,76 @@
+// BatchProcessTIFFs
+//
+// This macro batch processes all the .tif files in a folder and any
+// subfolders in that folder, applies bleach correction, denoises the images,
+// and then saves the corrected images as 16-bit TIFFs.
+
+requires("1.33s");
+
+dir = getDirectory("Choose a Directory");
+setBatchMode(true);
+count = 0;
+countFiles(dir);
+n = 0;
+processFiles(dir);
+print(count + " files processed");
+
+function countFiles(dir) {
+    list = getFileList(dir);
+    for (i = 0; i < list.length; i++) {
+        if (endsWith(list[i], "/")) {
+            countFiles("" + dir + list[i]);
+        } else if (endsWith(list[i], ".tif")) {
+            count++;
+        }
+    }
+}
+
+function processFiles(dir) {
+    list = getFileList(dir);
+    for (i = 0; i < list.length; i++) {
+        if (endsWith(list[i], "/")) {
+            processFiles("" + dir + list[i]);
+        } else if (endsWith(list[i], ".tif")) {
+            showProgress(n++, count);
+            path = dir + list[i];
+            processFile(path);
+        }
+    }
+}
+
+function processFile(path) {
+    if (endsWith(path, ".tif")) {
+        open(path);
+
+        // Get image title
+        imageName = getTitle();
+        len = lengthOf(imageName);
+        baseName = substring(imageName, 0, (len - 4));
+
+        // Ensure the image is a stack
+        frames = nSlices();
+        if (frames > 1) {
+            // Apply bleach correction
+            k = 0.01; // Example decay constant, modify as needed
+            for (t = 1; t <= frames; t++) {
+                if (t <= frames) { 
+                    setSlice(t);
+                    run("Multiply...", "value=" + exp(k * t) + " stack");
+                }
+            }
+        } else {
+            print("Warning: " + path + " is not a stack. Skipping bleach correction.");
+        }
+
+        // Apply Denoise
+        run("PureDenoise...", "parameters='10 4' estimation='Auto Individual'");
+
+        // Convert back to 16-bit
+        setOption("ScaleConversions", true);
+        run("16-bit");
+
+        // Save corrected image
+        saveAs("Tiff", dir + baseName + "-acceptor-" + n + ".tif");
+        close();
+    }
+}
